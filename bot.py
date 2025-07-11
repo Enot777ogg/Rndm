@@ -29,5 +29,5 @@ logging.basicConfig(level=logging.INFO)
 # Инициализация базы данных
 async def init_db():
     async with aiosqlite.connect("lottery.db") as db:
-        await db.execute("""
+        await db.execute(""") 
             CREATE TABLE IF NOT EXISTS participants (
