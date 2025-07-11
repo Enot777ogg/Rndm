@@ -43,8 +43,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("✅ Участвовать", callback_data='join')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "Привет! Нажми кнопку ниже, чтобы участвовать в розыгрыше:",
-        reply_markup=reply_markup
+        "Привет! Я *Rndm* — бот для розыгрыша случайного победителя.\n\n"
+        "Нажми кнопку ниже, чтобы участвовать в розыгрыше:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
     )
 
 
@@ -56,7 +58,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔁 Сброс", callback_data='reset')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("📋 Меню управления:", reply_markup=reply_markup)
+    await update.message.reply_text("📋 Меню управления *Rndm*:", reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,12 +85,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await db.commit()
 
-        await query.edit_message_text(f"{username}, ты участвуешь в розыгрыше!")
+        await query.edit_message_text(f"{username}, ты участвуешь в розыгрыше Rndm!")
 
         try:
             await context.bot.send_message(
                 chat_id=user.id,
-                text="🎉 Ты участвуешь в розыгрыше! Мы напишем тебе, если ты победишь."
+                text="🎉 Ты участвуешь в розыгрыше Rndm! Мы напишем тебе, если ты победишь."
             )
         except Forbidden:
             print(f"❌ Не могу отправить ЛС {username}")
@@ -99,7 +101,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 rows = await cursor.fetchall()
         if rows:
             names = "\n".join(name for (name,) in rows)
-            await query.edit_message_text(f"👥 Участники:\n{names}")
+            await query.edit_message_text(f"👥 Участники Rndm:\n{names}")
         else:
             await query.edit_message_text("❗ Пока нет участников.")
 
@@ -129,11 +131,11 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем всем участникам результат
         for _, chat in participants:
             try:
-                await context.bot.send_message(chat_id=chat, text=f"🎉 Победитель: {name}!")
+                await context.bot.send_message(chat_id=chat, text=f"🎉 Победитель Rndm: {name}!")
             except:
                 pass
 
-        await query.edit_message_text(f"🎉 Победитель: {name}!")
+        await query.edit_message_text(f"🎉 Победитель Rndm: {name}!")
 
     elif query.data == 'reset':
         if user.username != ADMIN_USERNAME:
@@ -142,7 +144,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with aiosqlite.connect("lottery.db") as db:
             await db.execute("DELETE FROM participants")
             await db.commit()
-        await query.edit_message_text("✅ Список участников сброшен.")
+        await query.edit_message_text("✅ Список участников Rndm сброшен.")
 
 
 async def main():
@@ -153,7 +155,7 @@ async def main():
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CallbackQueryHandler(handle_button))
 
-    print("🤖 Бот запущен!")
+    print("🤖 Бот Rndm запущен!")
     await app.run_polling()
 
 
