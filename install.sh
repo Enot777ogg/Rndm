@@ -15,8 +15,10 @@ fi
 
 cd telegram-raffle-bot
 
+echo "Пропускаем обновление pip в Termux"
+# pip install --upgrade pip
+
 echo "Устанавливаем Python зависимости..."
-pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "Запускаем бота..."
