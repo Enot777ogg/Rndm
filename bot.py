@@ -244,4 +244,26 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("pickwinner", pick_winner
+    app.add_handler(CommandHandler("pickwinner", pick_winner))
+    app.add_handler(CallbackQueryHandler(callback_handler))
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(create_contest_start, pattern="create_contest")],
+        states={
+            CREATE_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_desc)],
+            CREATE_PHOTO: [MessageHandler(filters.PHOTO, create_contest_photo),
+                           CommandHandler('skip', skip_photo)],
+            CREATE_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_datetime)],
+            CREATE_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_group)],
+            CONFIRMATION: [CommandHandler("confirm", confirm_create),
+                           CommandHandler("cancel", cancel_create)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_create)]
+    )
+    app.add_handler(conv_handler)
+
+    print("Бот запущен")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
