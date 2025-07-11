@@ -11,17 +11,14 @@ from telegram.ext import (
     CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 )
 
-# Включаем логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Админ по username
 ADMIN_USERNAME = "bytravka"
 
-# Константы состояний для ConversationHandler
 (
     CREATE_DESC,
     CREATE_PHOTO,
@@ -30,11 +27,9 @@ ADMIN_USERNAME = "bytravka"
     CONFIRMATION
 ) = range(5)
 
-# Подключение к базе
 conn = sqlite3.connect('rndm_bot.db', check_same_thread=False)
 cursor = conn.cursor()
 
-# Создаем таблицы если нет
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS contests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,98 +49,68 @@ CREATE TABLE IF NOT EXISTS participants (
 ''')
 conn.commit()
 
-# --- Функции меню и старт ---
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📋 Список конкурсов", callback_data='list_contests')],
         [InlineKeyboardButton("✅ Участвовать", callback_data='join')],
     ]
-
     if update.effective_user.username == ADMIN_USERNAME:
         keyboard.append([InlineKeyboardButton("➕ Создать конкурс", callback_data='create_contest')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        "Добро пожаловать в Rndm Bot!\nВыберите действие:",
-        reply_markup=reply_markup
-    )
-
-# --- Список конкурсов ---
+    await update.message.reply_text("Добро пожаловать в Rndm Bot!\nВыберите действие:", reply_markup=reply_markup)
 
 async def list_contests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     cursor.execute("SELECT id, description, post_datetime FROM contests ORDER BY id DESC")
     contests = cursor.fetchall()
-
     if not contests:
         await query.edit_message_text("Пока нет активных конкурсов.")
         return
-
     text = "📋 Активные конкурсы:\n\n"
     for c in contests:
         cid, desc, dt = c
         text += f"ID: {cid}\nОписание: {desc}\nДата публикации: {dt}\n\n"
-
     await query.edit_message_text(text)
-
-# --- Участие ---
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     await query.answer()
-
-    # Предлагаем выбрать конкурс для участия
     cursor.execute("SELECT id, description FROM contests ORDER BY id DESC")
     contests = cursor.fetchall()
-
     if not contests:
         await query.edit_message_text("Пока нет конкурсов для участия.")
         return
-
     keyboard = [
         [InlineKeyboardButton(f"{c[1]} (ID: {c[0]})", callback_data=f"join_{c[0]}")]
         for c in contests
     ]
-    await query.edit_message_text(
-        "Выберите конкурс, в котором хотите участвовать:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await query.edit_message_text("Выберите конкурс, в котором хотите участвовать:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def join_contest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     await query.answer()
-
     contest_id = int(query.data.split('_')[1])
-
     cursor.execute("SELECT 1 FROM contests WHERE id=?", (contest_id,))
     if not cursor.fetchone():
         await query.edit_message_text("Такого конкурса нет.")
         return
-
     cursor.execute("SELECT 1 FROM participants WHERE contest_id=? AND user_id=?", (contest_id, user.id))
     if cursor.fetchone():
         await query.edit_message_text("Вы уже участвуете в этом конкурсе.")
         return
-
-    cursor.execute("INSERT INTO participants (contest_id, user_id, username) VALUES (?, ?, ?)",
-                   (contest_id, user.id, user.username or ""))
+    cursor.execute("INSERT INTO participants (contest_id, user_id, username) VALUES (?, ?, ?)", (contest_id, user.id, user.username or ""))
     conn.commit()
-
     await query.edit_message_text("Вы успешно зарегистрировались в конкурсе!")
-
-# --- Создание конкурса (только для администратора) ---
 
 async def create_contest_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.callback_query.from_user
     if user.username != ADMIN_USERNAME:
         await update.callback_query.answer("⛔ Только админ может создавать конкурсы", show_alert=True)
         return
-
     await update.callback_query.answer()
     await update.callback_query.message.reply_text("Введите описание конкурса:")
     return CREATE_DESC
@@ -160,8 +125,6 @@ async def create_contest_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     if not photo:
         await update.message.reply_text("Пожалуйста, отправьте картинку или /skip:")
         return CREATE_PHOTO
-
-    # Берём file_id самой большой картинки
     context.user_data['contest_photo'] = photo[-1].file_id
     await update.message.reply_text("Введите дату и время публикации конкурса в формате ГГГГ-ММ-ДД ЧЧ:ММ (например, 2025-07-15 18:30):")
     return CREATE_DATETIME
@@ -179,31 +142,25 @@ async def create_contest_datetime(update: Update, context: ContextTypes.DEFAULT_
     except ValueError:
         await update.message.reply_text("Неверный формат даты. Попробуйте ещё раз:")
         return CREATE_DATETIME
-
     await update.message.reply_text("Введите ID группы, в которую нужно выложить пост (например, -1001234567890):")
     return CREATE_GROUP
 
 async def create_contest_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.message.text.strip()
-    # Простейшая проверка
     if not group_id.startswith("-100") or not group_id[1:].isdigit():
         await update.message.reply_text("Неверный формат ID группы. Попробуйте ещё раз:")
         return CREATE_GROUP
-
     context.user_data['contest_group'] = group_id
-
     desc = context.user_data['contest_desc']
     photo = context.user_data['contest_photo']
     dt = context.user_data['contest_datetime']
     group = context.user_data['contest_group']
-
     msg = (f"Проверьте данные:\n\n"
            f"Описание: {desc}\n"
            f"Дата публикации: {dt}\n"
            f"Группа: {group}\n"
            f"Картинка: {'есть' if photo else 'нет'}\n\n"
            f"Подтвердите /confirm или отмените /cancel")
-
     await update.message.reply_text(msg)
     return CONFIRMATION
 
@@ -212,13 +169,11 @@ async def confirm_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = context.user_data['contest_photo']
     dt = context.user_data['contest_datetime']
     group = context.user_data['contest_group']
-
     cursor.execute(
         "INSERT INTO contests (description, photo_file_id, post_datetime, group_chat_id) VALUES (?, ?, ?, ?)",
         (desc, photo, dt, group)
     )
     conn.commit()
-
     await update.message.reply_text("✅ Конкурс создан!")
     return ConversationHandler.END
 
@@ -226,24 +181,23 @@ async def cancel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Создание конкурса отменено.")
     return ConversationHandler.END
 
-# --- Выбор победителя (только админ) ---
+# --- Выбор победителя (администратор) ---
 
 async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.username != ADMIN_USERNAME:
         await update.message.reply_text("⛔ Только админ может выбирать победителя.")
         return
-
     if not context.args:
         await update.message.reply_text("❗ Использование: /pickwinner <id_конкурса>")
         return
-
     try:
         contest_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❗ Неверный ID конкурса.")
         return
 
+    # Получаем всех участников конкурса
     cursor.execute("SELECT user_id, username FROM participants WHERE contest_id=?", (contest_id,))
     participants = cursor.fetchall()
 
@@ -251,13 +205,16 @@ async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ В этом конкурсе нет участников.")
         return
 
+    # Выбираем случайного победителя
     winner = random.choice(participants)
     winner_id, winner_username = winner
 
+    # Отправляем сообщение о победителе в чат админа
     await update.message.reply_text(
         f"🏆 Победитель конкурса {contest_id}:\n@{winner_username} (id: {winner_id})"
     )
 
+    # Уведомляем всех участников
     for user_id, username in participants:
         try:
             await context.bot.send_message(
@@ -268,12 +225,9 @@ async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-# --- Обработчик колбэков ---
-
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-
     if data == "list_contests":
         await list_contests(update, context)
     elif data == "join":
@@ -285,44 +239,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.answer("Неизвестная команда")
 
-# --- Главное ---
-
 def main():
     TOKEN = "ВАШ_ТОКЕН_ЗДЕСЬ"
-
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Команды
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("pickwinner", pick_winner))
-
-    # Колбэки кнопок
-    app.add_handler(CallbackQueryHandler(callback_handler))
-
-    # Создание конкурса через диалог
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(create_contest_start, pattern='^create_contest$')],
-        states={
-            CREATE_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_desc)],
-            CREATE_PHOTO: [
-                MessageHandler(filters.PHOTO, create_contest_photo),
-                CommandHandler('skip', skip_photo)
-            ],
-            CREATE_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_datetime)],
-            CREATE_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_contest_group)],
-            CONFIRMATION: [
-                CommandHandler('confirm', confirm_create),
-                CommandHandler('cancel', cancel_create)
-            ],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_create)],
-        allow_reentry=True,
-    )
-
-    app.add_handler(conv_handler)
-
-    print("Бот запущен...")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+    app.add_handler(CommandHandler("pickwinner", pick_winner
