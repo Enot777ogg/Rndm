@@ -1,7 +1,8 @@
 import logging
 import sqlite3
 import random
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     InputMediaPhoto, ParseMode
@@ -30,15 +31,18 @@ ADMIN_USERNAME = "bytravka"
 conn = sqlite3.connect('rndm_bot.db', check_same_thread=False)
 cursor = conn.cursor()
 
+# Добавляем поле posted (0 - нет, 1 - опубликовано)
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS contests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     description TEXT NOT NULL,
     photo_file_id TEXT,
     post_datetime TEXT NOT NULL,
-    group_chat_id TEXT NOT NULL
+    group_chat_id TEXT NOT NULL,
+    posted INTEGER DEFAULT 0
 )
 ''')
+
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS participants (
     contest_id INTEGER NOT NULL,
@@ -181,8 +185,6 @@ async def cancel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Создание конкурса отменено.")
     return ConversationHandler.END
 
-# --- Выбор победителя (администратор) ---
-
 async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.username != ADMIN_USERNAME:
@@ -197,7 +199,6 @@ async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ Неверный ID конкурса.")
         return
 
-    # Получаем всех участников конкурса
     cursor.execute("SELECT user_id, username FROM participants WHERE contest_id=?", (contest_id,))
     participants = cursor.fetchall()
 
@@ -205,16 +206,13 @@ async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ В этом конкурсе нет участников.")
         return
 
-    # Выбираем случайного победителя
     winner = random.choice(participants)
     winner_id, winner_username = winner
 
-    # Отправляем сообщение о победителе в чат админа
     await update.message.reply_text(
         f"🏆 Победитель конкурса {contest_id}:\n@{winner_username} (id: {winner_id})"
     )
 
-    # Уведомляем всех участников
     for user_id, username in participants:
         try:
             await context.bot.send_message(
@@ -224,6 +222,32 @@ async def pick_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
+
+async def publish_contests(app):
+    while True:
+        now = datetime.now()
+        cursor.execute("SELECT id, description, photo_file_id, group_chat_id FROM contests WHERE posted=0 AND post_datetime<=?", (now.strftime("%Y-%m-%d %H:%M"),))
+        contests_to_post = cursor.fetchall()
+        for contest in contests_to_post:
+            cid, desc, photo_file_id, group_id = contest
+            try:
+                if photo_file_id:
+                    await app.bot.send_photo(
+                        chat_id=group_id,
+                        photo=photo_file_id,
+                        caption=f"📢 Новый конкурс!\n\n{desc}"
+                    )
+                else:
+                    await app.bot.send_message(
+                        chat_id=group_id,
+                        text=f"📢 Новый конкурс!\n\n{desc}"
+                    )
+                cursor.execute("UPDATE contests SET posted=1 WHERE id=?", (cid,))
+                conn.commit()
+                logger.info(f"Опубликован конкурс {cid} в группе {group_id}")
+            except Exception as e:
+                logger.error(f"Ошибка публикации конкурса {cid}: {e}")
+        await asyncio.sleep(60)  # Проверять каждую минуту
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -260,10 +284,4 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel_create)]
     )
-    app.add_handler(conv_handler)
-
-    print("Бот запущен")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+    app
