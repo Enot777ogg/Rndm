@@ -9,9 +9,15 @@ from datetime import datetime
 import os
 import random
 
-# Конфигурация
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_USERNAME = "@bytravka"
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
