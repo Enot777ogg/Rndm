@@ -10,7 +10,7 @@ import os
 import random
 
 # Конфигурация
-BOT_TOKEN = os.getenv(BOT_TOKEN="7906093019:AAH_Fme_DwCq9okVAUNZA17OlZwgBfp0NY4")
+BOT_TOKEN = os.getenv("BOT_TOKEN=7906093019:AAH_Fme_DwCq9okVAUNZA17OlZwgBfp0NY4")
 ADMIN_USERNAME = "@bytravka"
 
 logging.basicConfig(level=logging.INFO)
